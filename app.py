@@ -59,12 +59,14 @@ def parse_image_with_gemini(api_key, image):
         你是一個資深的餐廳庫存管理助手。請精準解析這張白板庫存照片。
         
         【任務細節】
-        讀取表格中每個品項對應的三個數據：
-        1. 臥式冰箱
-        2. 二門+四門
-        3. 分裝
+        1. 按照白板上「由上而下」的品項順序進行解析。
+        2. 讀取表格中每個品項對應的三個數據：
+           - 臥式冰箱
+           - 二門+四門
+           - 分裝
         
         【規則】
+        - **順序至關重要**：請務必按照照片中品項出現的先後順序排列 JSON 列表。
         - 若格子為空、有斜線或無法辨識，請填入 0。
         - 必須將辨識出的名稱「自動對齊」至下方的標準品項清單。
         - 修正常見的縮寫或錯字（如：pizza -> 披薩，香腸 -> 花雕雞香腸）。
@@ -73,14 +75,15 @@ def parse_image_with_gemini(api_key, image):
         {standard_names}
         
         【輸出格式】
-        僅回傳純 JSON 格式，不含 Markdown 標籤：
-        {{
-          "品項名稱": {{
+        僅回傳純 JSON 列表格式，不含 Markdown 標籤：
+        [
+          {{
+            "品項": "品項名稱",
             "臥式冰箱": 0,
             "二門+四門": 0,
             "分裝": 0
           }}
-        }}
+        ]
         """
         
         # 2.0 版本的安全性與產生設定
@@ -94,7 +97,7 @@ def parse_image_with_gemini(api_key, image):
         
         if not response or not response.text:
             st.error("API 回傳內容為空。")
-            return {}
+            return []
             
         # 清理回傳內容
         content = response.text.strip()
@@ -109,7 +112,7 @@ def parse_image_with_gemini(api_key, image):
             st.error(f"模型 {model_name} 尚未在您的區域開放或名稱不正確，建議嘗試 'gemini-2.5-flash'、'gemini-2.0-flash' 或 'gemini-1.5-flash'。")
         else:
             st.error(f"AI 辨識異常: {error_msg}")
-        return {}
+        return []
 
 # UI 設置
 st.set_page_config(page_title="餐廳叫貨輔助工具", layout="wide")
@@ -146,14 +149,32 @@ if uploaded_file and api_key:
             ai_results = parse_image_with_gemini(api_key, img)
             
             if ai_results:
-                # 更新現有 DataFrame
-                for item, values in ai_results.items():
-                    if item in st.session_state.df['品項'].values:
-                        idx = st.session_state.df[st.session_state.df['品項'] == item].index[0]
-                        st.session_state.df.at[idx, '臥式冰箱'] = float(values.get('臥式冰箱', 0))
-                        st.session_state.df.at[idx, '二門+四門'] = float(values.get('二門+四門', 0))
-                        st.session_state.df.at[idx, '分裝'] = float(values.get('分裝', 0))
-                st.success("辨識完成！請在下方表格確認與修正數據。")
+                # 取得 AI 辨識出的品項名稱列表 (僅保留在標準清單中的)
+                ai_item_names = []
+                for res in ai_results:
+                    name = res.get('品項')
+                    if name in st.session_state.df['品項'].values and name not in ai_item_names:
+                        ai_item_names.append(name)
+                
+                # 建立一個暫存的資料字典以便更新
+                ai_data_map = {res['品項']: res for res in ai_results if res.get('品項') in st.session_state.df['品項'].values}
+                
+                # 重新排序：AI 辨識出的品項在前 (按照照片順序)，其餘在後
+                all_items = st.session_state.df['品項'].tolist()
+                remaining_items = [item for item in all_items if item not in ai_item_names]
+                new_order = ai_item_names + remaining_items
+                
+                # 重建 DataFrame 順序並套用新數值
+                new_df = st.session_state.df.set_index('品項').reindex(new_order).reset_index()
+                
+                for item, values in ai_data_map.items():
+                    idx = new_df[new_df['品項'] == item].index[0]
+                    new_df.at[idx, '臥式冰箱'] = float(values.get('臥式冰箱', 0))
+                    new_df.at[idx, '二門+四門'] = float(values.get('二門+四門', 0))
+                    new_df.at[idx, '分裝'] = float(values.get('分裝', 0))
+                
+                st.session_state.df = new_df
+                st.success("辨識完成！已根據照片順序重新排列品項，請在下方表格確認。")
 
 st.subheader("庫存資料編輯")
 edited_df = st.data_editor(
