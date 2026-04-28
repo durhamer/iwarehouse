@@ -46,47 +46,69 @@ def format_order_qty(qty, unit):
         return f"{qty}{unit}"
 
 def parse_image_with_gemini(api_key, image):
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    standard_names = list(INVENTORY_STANDARDS.keys())
-    
-    prompt = f"""
-    你是一個餐廳庫存管理助手。請解析這張白板照片中的庫存數據。
-    
-    請提取以下三個欄位的數字：
-    1. '臥式冰箱'
-    2. '二門+四門'
-    3. '分裝'
-    
-    如果欄位是空格或沒寫，請視為 0。
-    
-    關鍵要求：
-    請將辨識出的品項名稱自動對齊到以下標準名稱列表中的 Key。
-    例如：將 "pizza球" 轉為 "披薩球"，"Apple派" 轉為 "蘋果派"，"香腸" 轉為 "花雕雞香腸"。
-    
-    標準名稱列表：
-    {standard_names}
-    
-    輸出格式：
-    請僅輸出 JSON 格式，不要有任何其他文字說明。格式如下：
-    {{
-      "品項名稱": {{
-        "臥式冰箱": 0,
-        "二門+四門": 0,
-        "分裝": 0
-      }}
-    }}
-    """
-    
-    response = model.generate_content([prompt, image])
     try:
-        # 清除可能包含的 markdown 標籤
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        standard_names = list(INVENTORY_STANDARDS.keys())
+        
+        prompt = f"""
+        你是一個餐廳庫存管理助手。請解析這張白板照片中的庫存數據。
+        
+        請提取以下三個欄位的數字：
+        1. '臥式冰箱'
+        2. '二門+四門'
+        3. '分裝'
+        
+        如果欄位是空格或沒寫，請視為 0。
+        
+        關鍵要求：
+        請將辨識出的品項名稱自動對齊到以下標準名稱列表中的 Key。
+        例如：將 "pizza球" 轉為 "披薩球"，"Apple派" 轉為 "蘋果派"，"香腸" 轉為 "花雕雞香腸"。
+        
+        標準名稱列表：
+        {standard_names}
+        
+        輸出格式：
+        請僅輸出 JSON 格式，不要有任何其他文字說明。格式如下：
+        {{
+          "品項名稱": {{
+            "臥式冰箱": 0,
+            "二門+四門": 0,
+            "分裝": 0
+          }}
+        }}
+        """
+        
+        # 安全性設定：關閉過度敏感的過濾
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+        
+        response = model.generate_content(
+            [prompt, image],
+            generation_config={"response_mime_type": "application/json"},
+            safety_settings=safety_settings
+        )
+        
+        if not response.text:
+            st.error("API 回傳內容為空，請確認圖片內容是否清晰。")
+            return {}
+            
         content = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(content)
+        
     except Exception as e:
-        st.error(f"解析 JSON 失敗: {e}")
-        st.text(response.text)
+        error_msg = str(e)
+        if "API_KEY_INVALID" in error_msg:
+            st.error("API Key 無效，請檢查您的 Secrets 設定。")
+        elif "quota" in error_msg.lower():
+            st.error("API 配額已用盡，請稍後再試。")
+        else:
+            st.error(f"AI 辨識過程發生異常: {error_msg}")
         return {}
 
 # UI 設置
