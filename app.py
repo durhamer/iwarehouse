@@ -162,6 +162,9 @@ if uploaded_file and api_key:
                 # 取得 AI 辨識出的品項名稱列表
                 ai_item_names = [res['品項'] for res in ai_results if res.get('品項') in INVENTORY_STANDARDS]
                 
+                # 檢查是否有不在清單中的品項 (幽靈品項)
+                unrecognized_items = [res['品項'] for res in ai_results if res.get('品項') not in INVENTORY_STANDARDS]
+                
                 # 重新排序
                 all_items = list(INVENTORY_STANDARDS.keys())
                 remaining_items = [item for item in all_items if item not in ai_item_names]
@@ -187,7 +190,12 @@ if uploaded_file and api_key:
                         new_df.at[idx, '原始文字'] = res.get('原始文字', "")
                 
                 st.session_state.df = new_df
-                st.success("辨識完成！已根據照片順序重新排列。若品項有誤，可直接在「品項」欄位修正。")
+                st.success("辨識完成！已根據照片順序重新排列。")
+                
+                # 顯示警告訊息：如果發現不在清單中的品項
+                if unrecognized_items:
+                    items_str = "、".join(unrecognized_items)
+                    st.warning(f"⚠️ **注意：白板上有 {len(unrecognized_items)} 個品項無法對齊標準清單：**\n\n「{items_str}」\n\n這些品項將不會出現在下方的編輯表格中。若這是新產品，請聯繫系統管理員更新標準庫存清單。")
 
 st.subheader("庫存資料編輯")
 standard_options = list(INVENTORY_STANDARDS.keys())
