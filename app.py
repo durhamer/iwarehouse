@@ -164,7 +164,8 @@ uploaded_file = st.file_uploader("上傳白板庫存照片", type=["jpg", "jpeg"
 # 初始化 Session State
 if "df" not in st.session_state:
     df_base = pd.DataFrame.from_dict(INVENTORY_STANDARDS, orient='index').reset_index()
-    df_base.columns = ['品項', '標準_完整包', '標準_分裝袋', '單位']
+    # 根據新的 INVENTORY_STANDARDS 結構調整欄位名稱 (包含 index 共 6 欄)
+    df_base.columns = ['品項', '標準_完整包', '標準_分裝袋', '單位', '進貨單位', '進貨換算']
     df_base['臥式冰箱'] = 0.0
     df_base['二門+四門'] = 0.0
     df_base['分裝'] = 0.0
@@ -192,7 +193,7 @@ if uploaded_file and api_key:
                 
                 # 重建 DataFrame
                 new_df = pd.DataFrame.from_dict(INVENTORY_STANDARDS, orient='index').reset_index()
-                new_df.columns = ['品項', '標準_完整包', '標準_分裝袋', '單位']
+                new_df.columns = ['品項', '標準_完整包', '標準_分裝袋', '單位', '進貨單位', '進貨換算']
                 new_df['臥式冰箱'] = 0.0
                 new_df['二門+四門'] = 0.0
                 new_df['分裝'] = 0.0
@@ -241,9 +242,12 @@ if not edited_df.equals(st.session_state.df):
     for i, row in edited_df.iterrows():
         item_name = row['品項']
         if item_name in INVENTORY_STANDARDS:
-            edited_df.at[i, '標準_完整包'] = INVENTORY_STANDARDS[item_name]['標準_完整包']
-            edited_df.at[i, '標準_分裝袋'] = INVENTORY_STANDARDS[item_name]['標準_分裝袋']
-            edited_df.at[i, '單位'] = INVENTORY_STANDARDS[item_name]['單位']
+            spec = INVENTORY_STANDARDS[item_name]
+            edited_df.at[i, '標準_完整包'] = spec['標準_完整包']
+            edited_df.at[i, '標準_分裝袋'] = spec['標準_分裝袋']
+            edited_df.at[i, '單位'] = spec['單位']
+            edited_df.at[i, '進貨單位'] = spec['進貨單位']
+            edited_df.at[i, '進貨換算'] = spec['進貨換算']
     st.session_state.df = edited_df
 
 # 學習功能
